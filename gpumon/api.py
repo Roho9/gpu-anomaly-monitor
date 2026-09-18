@@ -99,7 +99,26 @@ def create_app() -> FastAPI:
     connections = ConnectionManager()
     detector = DetectorEngine()
     metrics = MetricsAggregator()
-    incident_mgr = IncidentManager(broadcaster=connections.broadcast)
+
+    async def actuator(proposal) -> None:
+        """Apply the approved remediation to the (simulated) cluster.
+
+        In the demo this cordons the target GPU and clears the injected fault
+        so throughput visibly recovers. In AWS this would call the scheduler /
+        fabric control plane instead.
+        """
+        sim = getattr(app.state, "simulator", None)
+        if sim is None:
+            return
+        node, _, gpu = proposal.target.partition("/")
+        if gpu.startswith("gpu"):
+            try:
+                sim.cordon(node, int(gpu[3:]))
+            except ValueError:
+                pass
+        sim.clear_fault()
+
+    incident_mgr = IncidentManager(broadcaster=connections.broadcast, actuator=actuator)
 
     async def consume() -> None:
         async for event in stream.subscribe():
@@ -141,6 +160,7 @@ def create_app() -> FastAPI:
         from .simulator import DEMO_TIMELINE, ClusterSimulator
 
         sim = ClusterSimulator()
+        app.state.simulator = sim
         timeline = {start: (scen, dur) for start, scen, dur in DEMO_TIMELINE}
         period = float(os.environ.get("ARGUS_DEMO_PERIOD", "0.4"))
         loop_len = max(timeline) + 40
@@ -191,6 +211,15 @@ def create_app() -> FastAPI:
         if not found:
             return JSONResponse({"error": "not found"}, status_code=404)
         return found.model_dump()
+
+    # -- agentic remediation (approval-gated) --------------------------------
+    @app.post("/incidents/{incident_id}/remediate")
+    async def remediate(incident_id: str, body: dict | None = None):
+        approved_by = (body or {}).get("approved_by", "operator")
+        incident = await incident_mgr.remediate(incident_id, approved_by=approved_by)
+        if incident is None:
+            return JSONResponse({"error": "no incident or nothing to remediate"}, status_code=404)
+        return incident.model_dump()
 
     # -- historical analytics (Firehose -> S3 -> Athena equivalent) ----------
     @app.get("/history/timeseries")

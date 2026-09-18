@@ -47,6 +47,8 @@ class ClusterSimulator:
                 rank += 1
         # Active fault: (scenario, target_node, target_gpu, steps_remaining)
         self._fault: tuple[str, str, int, int] | None = None
+        # GPUs taken out of service by remediation; faults on them are suppressed.
+        self._cordoned: set[tuple[str, int]] = set()
 
     # -- scenario control ----------------------------------------------------
     def inject(self, scenario: str, steps: int = 15, node: str | None = None, gpu: int | None = None) -> None:
@@ -59,6 +61,16 @@ class ClusterSimulator:
     @property
     def active_fault(self) -> str | None:
         return self._fault[0] if self._fault else None
+
+    def clear_fault(self) -> None:
+        """Remediation cleared the active fault; the cluster recovers."""
+        self._fault = None
+
+    def cordon(self, node: str, gpu: int) -> None:
+        """Take a GPU out of service so future faults on it are suppressed."""
+        self._cordoned.add((node, gpu))
+        if self._fault and self._fault[1] == node and self._fault[2] == gpu:
+            self._fault = None
 
     # -- generation ----------------------------------------------------------
     def tick(self) -> list[TelemetryEvent]:
@@ -87,6 +99,8 @@ class ClusterSimulator:
         return self._apply_fault(e)
 
     def _apply_fault(self, e: TelemetryEvent) -> TelemetryEvent:
+        if (e.node, e.gpu) in self._cordoned:
+            return e  # cordoned GPU is out of service; no faults reported
         if not self._fault:
             return e
         scen, node, gpu, _ = self._fault

@@ -60,6 +60,19 @@
   .kindbar { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-family: var(--mono); font-size: 12px; }
   .kindbar .lbl { flex: 0 0 130px; color: var(--muted); }
   .kindbar .bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--ok)); min-width: 2px; }
+  .remedy { background: var(--panel-2); border-radius: 8px; padding: 14px; margin-top: 12px; border-left: 3px solid var(--warn); }
+  .remedy h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--warn); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .risk { text-transform: uppercase; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+  .risk.low { color: var(--ok); background: rgba(62,207,142,.12); }
+  .risk.medium { color: var(--warn); background: rgba(245,184,61,.12); }
+  .risk.high { color: var(--crit); background: rgba(255,93,93,.14); }
+  .steps { margin: 8px 0 12px; padding-left: 18px; color: var(--text); }
+  .steps li { margin: 3px 0; line-height: 1.45; }
+  button.approve { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 9px 16px; font-weight: 650; cursor: pointer; font-size: 13px; }
+  button.approve:hover { filter: brightness(1.12); }
+  button.approve:disabled { opacity: .6; cursor: default; }
+  .remedy .done { color: var(--ok); font-weight: 600; }
+  .remedy .await { color: var(--muted); font-size: 12px; margin-top: 6px; }
   .refs { font-family: var(--mono); font-size: 11px; color: var(--muted); }
   .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
 
@@ -157,7 +170,45 @@ function renderIncident(jobs) {
     <div><span class="pill ${active.severity}">${active.severity}</span><span class="pill status">${active.status}</span></div>
     <div class="inc-title">${active.title}</div>
     <div class="signals">${active.anomalies.map(a => "• "+a.message).join("\n")}</div>
-    ${rca}`;
+    ${rca}
+    ${renderRemediation(active)}`;
+}
+
+function renderRemediation(inc) {
+  const r = inc.remediation;
+  if (!r) return "";
+  const p = r.proposal;
+  const steps = p.steps.map(s => `<li>${s}</li>`).join("");
+  let footer;
+  if (r.status === "COMPLETED") {
+    footer = `<div class="done">&#10003; Remediation applied${r.approved_by ? " (approved by "+r.approved_by+")" : ""} &middot; incident resolved</div>`;
+  } else if (r.status === "EXECUTING" || inc.status === "REMEDIATING") {
+    footer = `<div class="await">Executing remediation&hellip;</div>`;
+  } else if (p.requires_approval) {
+    footer = `<button class="approve" onclick="remediate('${inc.id}', this)">Approve &amp; execute</button>
+              <div class="await">High-impact action - requires operator approval.</div>`;
+  } else {
+    footer = `<button class="approve" onclick="remediate('${inc.id}', this)">Execute</button>
+              <div class="await">Low-risk - eligible for auto-remediation.</div>`;
+  }
+  return `
+    <div class="remedy">
+      <h3>&#129302; Proposed remediation <span class="risk ${p.risk}">${p.risk} risk</span></h3>
+      <div class="v"><b>${p.title}</b> &rarr; <span class="model">${p.target}</span></div>
+      <ol class="steps">${steps}</ol>
+      ${footer}
+    </div>`;
+}
+
+async function remediate(id, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = "Executing..."; }
+  try {
+    await fetch(`/incidents/${id}/remediate`, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({approved_by: "operator"}),
+    });
+  } catch (e) { if (btn) { btn.disabled = false; btn.textContent = "Approve & execute"; } }
 }
 
 const feed = [];
@@ -204,6 +255,11 @@ function connect() {
       pushFeed("CRITICAL", `<b>Incident opened:</b> ${m.incident.title}`);
     } else if (m.type === "incident_diagnosed") {
       pushFeed("INFO", `<b>Diagnosed:</b> ${m.incident.diagnosis.root_cause}`);
+    } else if (m.type === "remediation_started") {
+      const p = m.incident.remediation.proposal;
+      pushFeed("WARNING", `&#129302; <b>Remediation started:</b> ${p.title} on ${p.target}`);
+    } else if (m.type === "remediation_completed") {
+      pushFeed("INFO", `&#10003; <b>Remediation applied:</b> ${m.incident.remediation.proposal.action}`);
     } else if (m.type === "incident_resolved") {
       pushFeed("INFO", `<b>Resolved:</b> ${m.incident.title}`);
     } else if (m.type === "alert") {

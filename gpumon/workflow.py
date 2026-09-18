@@ -13,10 +13,12 @@ into a single open incident and keep enriching it until the job goes quiet.
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from typing import Awaitable, Callable, Optional
 
-from .models import Anomaly, Incident, Severity
+from . import remediation
+from .models import Anomaly, Incident, RemediationProposal, RemediationRecord, Severity
 from .rca.engine import diagnose_incident
 from .rca.rag import kb
 from .store import store
@@ -24,6 +26,9 @@ from .store import store
 # Async callback the API layer registers to push updates to the dashboard and
 # to fan out alerts (the SNS equivalent).
 Broadcaster = Callable[[dict], Awaitable[None]]
+# Actuator performs the real-world remediation (clears the fault). In the demo
+# it cordons/clears in the simulator; in AWS it calls the scheduler/fabric APIs.
+Actuator = Callable[[RemediationProposal], Awaitable[None]]
 
 RESOLVE_COOLDOWN_S = 20.0  # a job quiet this long auto-resolves its incident
 
@@ -48,14 +53,22 @@ def _title(job: str, anomalies: list[Anomaly]) -> str:
 
 
 class IncidentManager:
-    def __init__(self, broadcaster: Optional[Broadcaster] = None) -> None:
+    def __init__(
+        self,
+        broadcaster: Optional[Broadcaster] = None,
+        actuator: Optional[Actuator] = None,
+    ) -> None:
         self._open: dict[str, Incident] = {}          # job -> open incident
         self._last_anomaly: dict[str, float] = {}     # job -> ts
         self._broadcaster = broadcaster
+        self._actuator = actuator
         self._diagnosing: set[str] = set()
 
     def set_broadcaster(self, broadcaster: Broadcaster) -> None:
         self._broadcaster = broadcaster
+
+    def set_actuator(self, actuator: Actuator) -> None:
+        self._actuator = actuator
 
     @property
     def open_incidents(self) -> list[Incident]:
@@ -105,11 +118,47 @@ class IncidentManager:
             diagnosis = await asyncio.to_thread(diagnose_incident, incident)
             incident.diagnosis = diagnosis
             incident.status = "DIAGNOSED"
+            # Propose a concrete, approval-gated remediation alongside the RCA.
+            incident.remediation = RemediationRecord(proposal=remediation.propose(incident))
             store.put_incident(incident)
             await self._emit("incident_diagnosed", {"incident": incident.model_dump()})
             await self._alert(incident)
+            # Low-risk actions may auto-remediate when the policy allows it.
+            if (
+                not incident.remediation.proposal.requires_approval
+                and os.environ.get("ARGUS_AUTO_REMEDIATE") == "1"
+            ):
+                await self._run_remediation(incident, approved_by=None)
         finally:
             self._diagnosing.discard(incident.id)
+
+    async def remediate(self, incident_id: str, approved_by: str) -> Optional[Incident]:
+        """Approve and execute the proposed remediation for an incident."""
+        incident = next((i for i in self._open.values() if i.id == incident_id), None)
+        if incident is None:
+            incident = store.get_incident(incident_id)
+        if incident is None or incident.remediation is None:
+            return None
+        await self._run_remediation(incident, approved_by=approved_by)
+        return incident
+
+    async def _run_remediation(self, incident: Incident, approved_by: Optional[str]) -> None:
+        record = incident.remediation
+        if record is None or record.status in {"EXECUTING", "COMPLETED"}:
+            return
+        incident.status = "REMEDIATING"
+        await self._emit("remediation_started", {"incident": incident.model_dump()})
+        # Execute the audited runbook, then actuate the real-world change.
+        remediation.execute(record, approved_by=approved_by)
+        if self._actuator is not None:
+            await self._actuator(record.proposal)
+        incident.status = "RESOLVED"
+        incident.resolved_at = time.time()
+        store.put_incident(incident)
+        self._index_for_rag(incident)
+        self._open.pop(incident.job, None)
+        await self._emit("remediation_completed", {"incident": incident.model_dump()})
+        await self._emit("incident_resolved", {"incident": incident.model_dump()})
 
     async def _alert(self, incident: Incident) -> None:
         """The SNS-equivalent fan-out (email/SMS/Slack in AWS mode)."""

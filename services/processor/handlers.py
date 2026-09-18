@@ -18,8 +18,9 @@ import os
 
 import boto3
 
+from gpumon import remediation
 from gpumon.detectors import DetectorEngine
-from gpumon.models import Anomaly, Incident, TelemetryEvent, Severity
+from gpumon.models import Anomaly, Incident, RemediationProposal, RemediationRecord, TelemetryEvent, Severity
 from gpumon.rca import bedrock
 from gpumon.rca.rag import kb
 
@@ -119,6 +120,31 @@ def persist_incident(event, _context):
         }
     )
     return event
+
+
+# --- Remediation workflow: apply the approved action -------------------------
+def apply_remediation(event, _context):
+    """Execute an approved remediation and mark the incident resolved.
+
+    Invoked by the remediation Step Functions workflow after the approval gate
+    (or directly for low-risk auto-remediation).
+    """
+    record = RemediationRecord(proposal=RemediationProposal(**event["proposal"]))
+    remediation.execute(record, approved_by=event.get("approved_by", "auto-policy"))
+
+    incident = event["incident"]
+    incident["remediation"] = record.model_dump()
+    incident["status"] = "RESOLVED"
+    table = boto3.resource("dynamodb").Table(os.environ["ARGUS_DDB_TABLE"])
+    table.put_item(
+        Item={
+            "pk": f"JOB#{incident['job']}",
+            "sk": f"INCIDENT#{incident['opened_at']}#{incident['id']}",
+            "status": "RESOLVED",
+            "doc": json.dumps(incident, default=str),
+        }
+    )
+    return {"incident": incident, "audit": record.audit}
 
 
 def _max_sev(anomalies: list[Anomaly]) -> Severity:

@@ -99,14 +99,36 @@ class Diagnosis(BaseModel):
     model: str = "offline-heuristic"
 
 
+class RemediationProposal(BaseModel):
+    action: str = Field(..., description="Short action name, e.g. 'cordon_gpu_and_restart'")
+    title: str
+    risk: str = Field(..., description="low | medium | high")
+    requires_approval: bool = True
+    target: str = Field(..., description="What the action operates on, e.g. 'gb10-node-02/gpu5'")
+    steps: list[str] = Field(default_factory=list)
+    rationale: str = ""
+
+
+class RemediationRecord(BaseModel):
+    proposal: RemediationProposal
+    # PROPOSED | APPROVED | EXECUTING | COMPLETED | FAILED
+    status: str = "PROPOSED"
+    approved_by: Optional[str] = None
+    audit: list[dict] = Field(default_factory=list)
+    created_at: float = Field(default_factory=_now)
+    completed_at: Optional[float] = None
+
+
 class Incident(BaseModel):
     id: str = Field(default_factory=lambda: _uid("inc"))
     job: str
     title: str
     severity: Severity
-    status: str = "OPEN"  # OPEN | DIAGNOSING | DIAGNOSED | RESOLVED
+    # OPEN | DIAGNOSING | DIAGNOSED | REMEDIATING | RESOLVED
+    status: str = "OPEN"
     anomalies: list[Anomaly] = Field(default_factory=list)
     diagnosis: Optional[Diagnosis] = None
+    remediation: Optional[RemediationRecord] = None
     opened_at: float = Field(default_factory=_now)
     resolved_at: Optional[float] = None
 

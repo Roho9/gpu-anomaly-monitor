@@ -39,7 +39,8 @@ clusters fail differently, and the interesting signals are **cross-rank**:
 
 ```
 telemetry -> stream -> anomaly detection -> incident correlation
-          -> RAG retrieval -> LLM diagnosis -> alert -> dashboard / auto-resolve
+          -> RAG retrieval -> LLM diagnosis -> alert
+          -> proposed remediation -> [human approval] -> execute -> resolved
 ```
 
 **Detection** (`gpumon/detectors.py`) has two layers: an online EWMA
@@ -54,6 +55,15 @@ diagnose *grounded in that context*. Resolved incidents are fed back into the
 retrieval corpus, so the system improves at recognising recurring problems.
 Offline, a deterministic diagnoser stands in for Bedrock so the full flow runs
 with zero credentials.
+
+**Agentic remediation** (`gpumon/remediation.py`) closes the loop: each
+diagnosed incident gets a concrete, named action (cordon the straggler GPU and
+restart, drain a node with failing HBM, roll back a regressing deploy...) with
+a blast-radius risk and an ordered runbook. High-impact actions are **gated on
+human approval** - an operator approves in the dashboard (or via the SNS
+approval callback / Step Functions task token in AWS), and only then does the
+agent execute, writing an audit entry per step. In the local demo, approving
+actually clears the injected fault so you watch throughput recover.
 
 ## Measured throughput
 
@@ -77,6 +87,7 @@ shards / Lambda consumers; the local number is the per-core floor.
 | Stream | `EventStream` (asyncio) | Kinesis (on-demand) |
 | Detection | in-process engine | Stream-processor Lambda |
 | Workflow | `IncidentManager` | Step Functions |
+| Remediation | actuator on the simulator | Step Functions + SNS human-approval (task token) |
 | RCA LLM | offline heuristic | Bedrock (Claude) |
 | Store | SQLite single-table | DynamoDB single-table |
 | Alerts | WebSocket broadcast | SNS (email/SMS) |
@@ -151,8 +162,10 @@ Built as a vertical slice first, then deepened layer by layer:
       deterministic local embedder; `ARGUS_RETRIEVER=embedding` to try it offline
 - [x] Firehose -> S3 -> Athena historical lake + dashboard analytics panel
       (mirrored locally by a partitioned archive + `/history` query API)
+- [x] Agentic auto-remediation: per-incident action proposals, approval-gated
+      execution with an audit trail, live fault recovery in the demo
+      (Step Functions human-approval workflow in AWS)
 - [ ] React + CloudFront frontend replacing the bundled dashboard
-- [ ] Agentic auto-remediation (approval-gated rollback / cordon actions)
 
 ## License
 

@@ -23,7 +23,9 @@ export interface AiStackProps extends cdk.StackProps {
  */
 export class AiStack extends cdk.Stack {
   public readonly diagnoseStateMachine: sfn.StateMachine;
+  public readonly remediationStateMachine: sfn.StateMachine;
   public readonly alertTopic: sns.Topic;
+  public readonly approvalTopic: sns.Topic;
 
   constructor(scope: Construct, id: string, props: AiStackProps) {
     super(scope, id, props);
@@ -89,6 +91,46 @@ export class AiStack extends cdk.Stack {
       tracingEnabled: true,
     });
 
+    // --- Agentic remediation workflow with a human-approval gate ---
+    //
+    //   Choice(requires_approval)
+    //     true  -> RequestApproval (SNS, waitForTaskToken) -> ApplyRemediation
+    //     false -> ApplyRemediation           (low-risk auto-remediation)
+    //
+    // An operator approves via the dashboard, which calls SendTaskSuccess with
+    // the task token to resume the paused execution.
+    this.approvalTopic = new sns.Topic(this, "ApprovalRequests", { topicName: "gpumon-approvals" });
+    const applyFn = fn("ApplyRemediation", "handlers.apply_remediation");
+    props.incidentsTable.grantReadWriteData(applyFn);
+
+    const applyTask = new tasks.LambdaInvoke(this, "ApplyRemediationTask", {
+      lambdaFunction: applyFn,
+      outputPath: "$.Payload",
+    });
+    const requestApproval = new tasks.SnsPublish(this, "RequestApproval", {
+      topic: this.approvalTopic,
+      integrationPattern: sfn.IntegrationPattern.WAIT_FOR_TASK_TOKEN,
+      message: sfn.TaskInput.fromObject({
+        taskToken: sfn.JsonPath.taskToken,
+        incidentId: sfn.JsonPath.stringAt("$.incident.id"),
+        title: sfn.JsonPath.stringAt("$.proposal.title"),
+        risk: sfn.JsonPath.stringAt("$.proposal.risk"),
+      }),
+      timeout: cdk.Duration.hours(1),
+    }).next(applyTask);
+
+    const remediationDefinition = new sfn.Choice(this, "NeedsApproval")
+      .when(sfn.Condition.booleanEquals("$.proposal.requires_approval", true), requestApproval)
+      .otherwise(applyTask);
+
+    this.remediationStateMachine = new sfn.StateMachine(this, "RemediationWorkflow", {
+      stateMachineName: "gpumon-remediation-workflow",
+      definitionBody: sfn.DefinitionBody.fromChainable(remediationDefinition),
+      timeout: cdk.Duration.hours(2),
+      tracingEnabled: true,
+    });
+
     new cdk.CfnOutput(this, "AlertTopicArn", { value: this.alertTopic.topicArn });
+    new cdk.CfnOutput(this, "ApprovalTopicArn", { value: this.approvalTopic.topicArn });
   }
 }
