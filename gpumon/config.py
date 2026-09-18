@@ -37,6 +37,11 @@ class Settings:
     bedrock_model: str = field(
         default_factory=lambda: os.environ.get("ARGUS_BEDROCK_MODEL", "anthropic.claude-sonnet-5-20250101-v1:0")
     )
+    embed_model: str = field(
+        default_factory=lambda: os.environ.get("ARGUS_EMBED_MODEL", "amazon.titan-embed-text-v2:0")
+    )
+    # Retrieval backend for local mode: "tfidf" (default) or "embedding".
+    retriever: str = field(default_factory=lambda: os.environ.get("ARGUS_RETRIEVER", "tfidf"))
     aws_region: str = field(default_factory=lambda: os.environ.get("AWS_REGION", "us-east-1"))
     # When true, never call out to Bedrock even in aws mode (useful for CI / demos).
     force_offline_ai: bool = field(default_factory=lambda: _flag("ARGUS_OFFLINE_AI"))

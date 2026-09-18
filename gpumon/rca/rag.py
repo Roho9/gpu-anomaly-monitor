@@ -5,9 +5,17 @@ prior incidents and the most relevant runbooks, and feed them in as grounding
 context. This is what stops the model from hallucinating a plausible-sounding
 but generic answer: it reasons over *this* cluster's history.
 
-Local mode uses a dependency-free TF-IDF + cosine retriever so the demo needs
-no embedding endpoint. In AWS mode the same interface is backed by Bedrock
-Titan embeddings + a vector index; only ``_embed`` changes.
+Retrieval is pluggable behind one ``Retriever`` interface (``add`` /
+``search``):
+
+* ``TfidfRetriever``      - dependency-free lexical retriever, the local
+  default, so the demo needs no embedding endpoint.
+* ``EmbeddingRetriever``  - dense semantic retrieval over an ``Embedder``. In
+  AWS mode it is backed by Bedrock Titan embeddings; locally it can use the
+  deterministic ``HashingEmbedder`` (set ``ARGUS_RETRIEVER=embedding``).
+
+The factory ``build_retriever`` picks one from config, so switching the whole
+platform to semantic search is a single env var.
 """
 
 from __future__ import annotations
@@ -18,6 +26,9 @@ import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
+
+from ..config import settings
+from .embeddings import Embedder, HashingEmbedder, cosine
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 RUNBOOK_DIR = _ROOT / "runbooks"
@@ -88,11 +99,53 @@ class TfidfRetriever:
         return [s for s in scored[:k] if s[1] > 0]
 
 
+class EmbeddingRetriever:
+    """Dense semantic retriever over a pluggable embedder.
+
+    Documents are embedded on insert and queries at search time; ranking is
+    cosine similarity. In production the embedder is Titan and the vectors
+    would live in a managed vector index (OpenSearch/pgvector); the in-memory
+    list here keeps the local corpus (a few dozen docs) trivial.
+    """
+
+    def __init__(self, embedder: Embedder) -> None:
+        self.embedder = embedder
+        self._docs: list[Document] = []
+        self._vecs: list[list[float]] = []
+
+    def add(self, doc: Document) -> None:
+        self._docs.append(doc)
+        self._vecs.append(self.embedder.embed([doc.title + " " + doc.text])[0])
+
+    def search(self, query: str, k: int = 3, kind: str | None = None) -> list[tuple[Document, float]]:
+        if not self._docs:
+            return []
+        qv = self.embedder.embed([query])[0]
+        scored = [
+            (doc, cosine(qv, vec))
+            for doc, vec in zip(self._docs, self._vecs)
+            if not kind or doc.kind == kind
+        ]
+        scored.sort(key=lambda x: x[1], reverse=True)
+        return [s for s in scored[:k] if s[1] > 0]
+
+
+def build_retriever():
+    """Select a retriever from config: Titan in AWS, else TF-IDF (or hashing)."""
+    if settings.use_bedrock:
+        from .embeddings import TitanEmbedder
+
+        return EmbeddingRetriever(TitanEmbedder(settings.embed_model))
+    if settings.retriever == "embedding":
+        return EmbeddingRetriever(HashingEmbedder())
+    return TfidfRetriever()
+
+
 class KnowledgeBase:
     """Runbooks (from disk) + resolved incidents (from the store)."""
 
-    def __init__(self) -> None:
-        self.retriever = TfidfRetriever()
+    def __init__(self, retriever=None) -> None:
+        self.retriever = retriever or build_retriever()
         self._load_runbooks()
         self._load_seed_incidents()
 

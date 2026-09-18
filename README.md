@@ -146,7 +146,8 @@ Built as a vertical slice first, then deepened layer by layer:
 
 - [x] End-to-end vertical slice: ingest -> detect -> diagnose -> alert -> dashboard
 - [x] CDK stacks for the full AWS architecture
-- [ ] Bedrock Titan embeddings for retrieval (swap the TF-IDF retriever)
+- [x] Pluggable semantic retrieval: Bedrock Titan embeddings (AWS) with a
+      deterministic local embedder; `ARGUS_RETRIEVER=embedding` to try it offline
 - [ ] Firehose -> S3 -> Athena historical query panel
 - [ ] React + CloudFront frontend replacing the bundled dashboard
 - [ ] Agentic auto-remediation (approval-gated rollback / cordon actions)

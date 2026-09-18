@@ -50,13 +50,17 @@ export class AiStack extends cdk.Stack {
     const diagnose = fn("Diagnose", "handlers.diagnose");
     const persist = fn("Persist", "handlers.persist_incident");
 
-    // Bedrock RCA needs invoke permission on the Claude models.
-    diagnose.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ["bedrock:InvokeModel"],
-        resources: ["arn:aws:bedrock:*::foundation-model/anthropic.*"],
-      })
-    );
+    // Bedrock RCA needs invoke on the Claude models; RAG retrieval (gather)
+    // needs invoke on Titan embeddings.
+    const bedrockInvoke = (fnName: lambda.DockerImageFunction, models: string[]) =>
+      fnName.addToRolePolicy(
+        new iam.PolicyStatement({
+          actions: ["bedrock:InvokeModel"],
+          resources: models.map((m) => `arn:aws:bedrock:*::foundation-model/${m}`),
+        })
+      );
+    bedrockInvoke(diagnose, ["anthropic.*"]);
+    bedrockInvoke(gather, ["amazon.titan-embed-text-v2:0"]);
     props.incidentsTable.grantReadWriteData(gather);
     props.incidentsTable.grantReadWriteData(persist);
 
