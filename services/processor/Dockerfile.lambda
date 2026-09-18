@@ -1,0 +1,15 @@
+# Lambda image (AWS base image + Runtime Interface Client) for the
+# event-driven functions. Handler is selected per-function via the CMD
+# override in the CDK (e.g. ["handlers.ingest"], ["handlers.process_batch"]).
+FROM public.ecr.aws/lambda/python:3.12
+
+# Install the gpumon package so handlers share one implementation with local.
+COPY pyproject.toml README.md ${LAMBDA_TASK_ROOT}/
+COPY gpumon ${LAMBDA_TASK_ROOT}/gpumon
+COPY runbooks ${LAMBDA_TASK_ROOT}/runbooks
+RUN pip install --no-cache-dir "${LAMBDA_TASK_ROOT}[aws]"
+
+COPY services/processor/handlers.py ${LAMBDA_TASK_ROOT}/handlers.py
+
+# Default handler; overridden per function by the CDK.
+CMD ["handlers.ingest"]

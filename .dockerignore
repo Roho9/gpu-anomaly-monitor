@@ -1,0 +1,20 @@
+# Docker build context is the repo root (so the gpumon package is bundled).
+# Keep the context small and avoid copying build output into itself.
+.git
+.venv
+venv
+**/__pycache__
+*.pyc
+*.db
+.pytest_cache
+.mypy_cache
+node_modules
+infrastructure/node_modules
+infrastructure/cdk.out
+infrastructure/**/*.js
+infrastructure/**/*.d.ts
+*.log
+.DS_Store
+tests
+docs
+.github

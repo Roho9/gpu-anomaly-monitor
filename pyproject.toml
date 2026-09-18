@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gpumon"
+version = "0.1.0"
+description = "The best GPU anomaly monitoring system ever: AI-powered incident monitoring for distributed GPU/ML training clusters"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Rohan Mahesh" }]
+dependencies = [
+  "fastapi>=0.110",
+  "uvicorn[standard]>=0.27",
+  "pydantic>=2.6",
+  "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+aws = ["boto3>=1.34"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.23"]
+
+[project.scripts]
+gpumon = "gpumon.__main__:main"
+
+[tool.setuptools]
+packages = ["gpumon", "gpumon.rca"]
+
+[tool.setuptools.package-data]
+gpumon = ["dashboard.html"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

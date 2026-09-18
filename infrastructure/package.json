@@ -1,0 +1,24 @@
+{
+  "name": "gpumon-infrastructure",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AWS CDK infrastructure for the best GPU anomaly monitoring system ever",
+  "bin": { "gpumon": "bin/gpumon.ts" },
+  "scripts": {
+    "build": "tsc",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --all",
+    "diff": "cdk diff",
+    "destroy": "cdk destroy --all"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "aws-cdk": "^2.130.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "aws-cdk-lib": "^2.130.0",
+    "constructs": "^10.3.0"
+  }
+}

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
+
+# Local runtime artifacts
+*.db
+argus.db
+
+# Node / CDK
+node_modules/
+infrastructure/cdk.out/
+*.tsbuildinfo
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.log

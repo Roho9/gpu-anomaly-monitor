@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>The best GPU anomaly monitoring system ever</title>
+<style>
+  :root {
+    --bg: #0b0e14; --panel: #131824; --panel-2: #1a2130; --line: #232c3d;
+    --text: #e6ebf5; --muted: #8a94a6; --accent: #5b9dff;
+    --ok: #3ecf8e; --warn: #f5b83d; --crit: #ff5d5d;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 14px; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--panel);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+  header h1 span { color: var(--accent); }
+  .stat { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .stat b { color: var(--text); }
+  .wrap { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; padding: 16px 24px; max-width: 1400px; margin: 0 auto; }
+  @media (max-width: 900px) { .wrap { grid-template-columns: 1fr; } }
+  h2 { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); margin: 0 0 10px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+
+  .job { display: flex; align-items: center; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .job:first-of-type { border-top: none; }
+  .job .name { font-weight: 600; flex: 0 0 190px; font-family: var(--mono); font-size: 13px; }
+  .badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; letter-spacing: .5px; }
+  .HEALTHY { color: var(--ok); background: rgba(62,207,142,.12); }
+  .DEGRADED { color: var(--warn); background: rgba(245,184,61,.12); }
+  .DOWN { color: var(--crit); background: rgba(255,93,93,.14); }
+  .metrics { display: flex; gap: 18px; margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .metrics b { color: var(--text); font-weight: 600; }
+  svg.spark { display: block; }
+
+  .incident { border-left: 3px solid var(--crit); }
+  .incident.none { border-left-color: var(--line); }
+  .inc-title { font-size: 15px; font-weight: 650; margin: 2px 0 8px; }
+  .pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 6px; margin-right: 6px; text-transform: uppercase; letter-spacing: .5px; }
+  .pill.CRITICAL { color: var(--crit); background: rgba(255,93,93,.14); }
+  .pill.WARNING { color: var(--warn); background: rgba(245,184,61,.12); }
+  .pill.status { color: var(--accent); background: rgba(91,157,255,.12); }
+  .signals { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: pre-wrap; line-height: 1.55; margin: 10px 0; padding: 10px; background: var(--bg); border-radius: 8px; max-height: 160px; overflow: auto; }
+  .rca { background: var(--panel-2); border-radius: 8px; padding: 14px; margin-top: 12px; }
+  .rca h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--accent); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .rca .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; margin-top: 10px; }
+  .rca .v { margin-top: 3px; line-height: 1.5; }
+  .conf { height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; margin-top: 4px; }
+  .conf > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); }
+  .model { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .refs { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+  .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
+
+  .feed { max-height: 520px; overflow: auto; }
+  .row { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 12px; align-items: baseline; }
+  .row:first-child { border-top: none; }
+  .row time { color: var(--muted); font-family: var(--mono); flex: 0 0 62px; }
+  .dot { flex: 0 0 8px; height: 8px; border-radius: 50%; margin-top: 5px; }
+  .dot.CRITICAL { background: var(--crit); } .dot.WARNING { background: var(--warn); } .dot.INFO { background: var(--accent); }
+  .row .msg { color: var(--text); } .row .msg .k { color: var(--muted); font-family: var(--mono); }
+  .conn { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--crit); margin-right: 6px; }
+  .conn.up { background: var(--ok); }
+</style>
+</head>
+<body>
+<header>
+  <h1>The <span>best</span> GPU anomaly monitoring system <span>ever</span></h1>
+  <div class="stat"><span class="conn" id="conn"></span><b id="events">0</b> telemetry events ingested</div>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="card">
+      <h2>Cluster health</h2>
+      <div id="jobs"><div class="empty">waiting for telemetry...</div></div>
+    </div>
+    <div class="card incident none" id="incident">
+      <h2>Active incident</h2>
+      <div class="empty">No active incidents. All training jobs healthy.</div>
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <h2>Live signal feed</h2>
+      <div class="feed" id="feed"><div class="empty">no anomalies yet</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const now = () => new Date().toLocaleTimeString([], {hour12:false});
+
+function spark(history) {
+  const w = 120, h = 28, n = history.length;
+  if (n < 2) return `<svg class="spark" width="${w}" height="${h}"></svg>`;
+  const min = Math.min(...history), max = Math.max(...history), rng = (max - min) || 1;
+  const pts = history.map((v,i) => `${(i/(n-1))*w},${h - ((v-min)/rng)*(h-4) - 2}`).join(" ");
+  return `<svg class="spark" width="${w}" height="${h}"><polyline fill="none" stroke="#5b9dff" stroke-width="1.5" points="${pts}"/></svg>`;
+}
+
+function renderJobs(jobs) {
+  if (!jobs.length) return;
+  $("jobs").innerHTML = jobs.map(j => `
+    <div class="job">
+      <div class="name">${j.job}</div>
+      <span class="badge ${j.health}">${j.health}</span>
+      <div class="metrics">
+        <span>${spark(j.history)}</span>
+        <span><b>${j.tokens_per_s.toLocaleString()}</b> tok/s</span>
+        <span><b>${j.avg_step_ms}</b> ms/step</span>
+        <span><b>${j.max_temp_c}</b>&deg;C</span>
+        <span><b>${j.gpus}</b> GPUs / ${j.nodes} nodes</span>
+      </div>
+    </div>`).join("");
+}
+
+function renderIncident(jobs) {
+  const active = jobs.map(j => j.incident).filter(Boolean)
+    .sort((a,b) => (b.severity==="CRITICAL") - (a.severity==="CRITICAL"))[0];
+  const el = $("incident");
+  if (!active) {
+    el.className = "card incident none";
+    el.innerHTML = `<h2>Active incident</h2><div class="empty">No active incidents. All training jobs healthy.</div>`;
+    return;
+  }
+  el.className = "card incident";
+  const d = active.diagnosis;
+  const rca = d ? `
+    <div class="rca">
+      <h3>&#129504; AI root-cause analysis <span class="model">${d.model}</span></h3>
+      <div class="k">Likely root cause</div><div class="v">${d.root_cause}</div>
+      <div class="k">Reasoning</div><div class="v">${d.reasoning}</div>
+      <div class="k">Recommended action</div><div class="v">${d.recommended_action}</div>
+      <div class="k">Confidence</div><div class="conf"><i style="width:${Math.round(d.confidence*100)}%"></i></div>
+      ${d.runbooks_used.length ? `<div class="k">Grounded in</div><div class="refs">${d.runbooks_used.join(", ")}${d.similar_incidents.length ? " &middot; "+d.similar_incidents.length+" similar past incident(s)" : ""}</div>` : ""}
+    </div>` :
+    `<div class="empty">Running Bedrock diagnosis&hellip;</div>`;
+  el.innerHTML = `
+    <h2>Active incident</h2>
+    <div><span class="pill ${active.severity}">${active.severity}</span><span class="pill status">${active.status}</span></div>
+    <div class="inc-title">${active.title}</div>
+    <div class="signals">${active.anomalies.map(a => "• "+a.message).join("\n")}</div>
+    ${rca}`;
+}
+
+const feed = [];
+function pushFeed(sev, html) {
+  feed.unshift({t: now(), sev, html});
+  if (feed.length > 60) feed.pop();
+  $("feed").innerHTML = feed.map(f =>
+    `<div class="row"><time>${f.t}</time><span class="dot ${f.sev}"></span><span class="msg">${f.html}</span></div>`).join("");
+}
+
+function connect() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/live`);
+  ws.onopen = () => $("conn").classList.add("up");
+  ws.onclose = () => { $("conn").classList.remove("up"); setTimeout(connect, 1500); };
+  ws.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.type === "snapshot") {
+      $("events").textContent = m.events_ingested.toLocaleString();
+      renderJobs(m.jobs); renderIncident(m.jobs);
+    } else if (m.type === "anomaly") {
+      m.anomalies.forEach(a => pushFeed(a.severity, `<span class="k">[${a.kind}]</span> ${a.message}`));
+    } else if (m.type === "incident_opened") {
+      pushFeed("CRITICAL", `<b>Incident opened:</b> ${m.incident.title}`);
+    } else if (m.type === "incident_diagnosed") {
+      pushFeed("INFO", `<b>Diagnosed:</b> ${m.incident.diagnosis.root_cause}`);
+    } else if (m.type === "incident_resolved") {
+      pushFeed("INFO", `<b>Resolved:</b> ${m.incident.title}`);
+    } else if (m.type === "alert") {
+      pushFeed(m.severity, `&#128276; <b>Alert sent:</b> ${m.title} &rarr; ${m.action || ""}`);
+    }
+  };
+}
+connect();
+</script>
+</body>
+</html>

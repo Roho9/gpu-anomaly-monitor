@@ -1,0 +1,27 @@
+[
+  {
+    "id": "inc_seed_straggler",
+    "title": "Straggler on gb10-node-07/gpu2 stalled llama3 pretrain",
+    "text": "A single rank ran 2.4x the cluster-median step time after a NVLink degraded on the board. Every all-reduce blocked on it and tokens/sec fell 58%. Root cause: degraded NVLink on one GPU. Action: cordoned the GPU and restarted from checkpoint excluding the rank; throughput recovered."
+  },
+  {
+    "id": "inc_seed_ecc",
+    "title": "ECC errors accumulating on gb10-node-03/gpu5",
+    "text": "Correctable ECC errors rose over ten minutes, then a double-bit error crashed the job. Root cause: failing HBM stack. Action: drained the node, ran row-remap, RMA'd the GPU. Prevention: alert on first correctable ECC error."
+  },
+  {
+    "id": "inc_seed_nccl",
+    "title": "Cluster-wide NCCL all-reduce stall from flapping RoCE link",
+    "text": "nccl_allreduce_ms spiked 6x across all ranks while fabric_rx_gbps halved. Root cause: a flapping RoCE link causing PFC congestion on the top-of-rack switch. Action: drained the port, moved the job off the degraded link."
+  },
+  {
+    "id": "inc_seed_oom",
+    "title": "HBM OOM after sequence-length change",
+    "text": "mem_pct hit 99% on several ranks after a config bumped sequence length. Root cause: activation memory exceeded HBM. Action: enabled activation checkpointing and reduced micro-batch size."
+  },
+  {
+    "id": "inc_seed_throughput",
+    "title": "Throughput collapse from dataloader regression",
+    "text": "tokens_per_s fell 45% with sm_util dropping too, so GPUs were input-bound. Root cause: a deploy reduced dataloader workers and the job became storage-bound. Action: rolled back the change and increased prefetch workers."
+  }
+]
