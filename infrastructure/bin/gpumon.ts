@@ -5,6 +5,7 @@ import { DatabaseStack } from "../lib/database-stack";
 import { StreamingStack } from "../lib/streaming-stack";
 import { AiStack } from "../lib/ai-stack";
 import { ApiStack } from "../lib/api-stack";
+import { AnalyticsStack } from "../lib/analytics-stack";
 import { MonitoringStack } from "../lib/monitoring-stack";
 
 /**
@@ -38,6 +39,11 @@ const api = new ApiStack(app, "GpuMonApi", {
   telemetryStream: streaming.telemetryStream,
   diagnoseStateMachine: ai.diagnoseStateMachine,
   ingestQueue: streaming.ingestQueue,
+});
+new AnalyticsStack(app, "GpuMonAnalytics", {
+  env,
+  telemetryStream: streaming.telemetryStream,
+  rawEventsBucket: streaming.rawEventsBucket,
 });
 new MonitoringStack(app, "GpuMonMonitoring", {
   env,

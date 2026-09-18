@@ -53,6 +53,13 @@
   .conf { height: 6px; border-radius: 3px; background: var(--bg); overflow: hidden; margin-top: 4px; }
   .conf > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), var(--ok)); }
   .model { font-family: var(--mono); font-size: 10px; color: var(--muted); }
+  .src { font-family: var(--mono); font-size: 10px; color: var(--muted); text-transform: none; letter-spacing: 0; }
+  .kpis { display: flex; gap: 22px; margin-bottom: 14px; }
+  .kpi .n { font-size: 22px; font-weight: 700; }
+  .kpi .l { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .6px; }
+  .kindbar { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-family: var(--mono); font-size: 12px; }
+  .kindbar .lbl { flex: 0 0 130px; color: var(--muted); }
+  .kindbar .bar { height: 8px; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--ok)); min-width: 2px; }
   .refs { font-family: var(--mono); font-size: 11px; color: var(--muted); }
   .empty { color: var(--muted); font-style: italic; padding: 8px 0; }
 
@@ -88,6 +95,10 @@
     <div class="card">
       <h2>Live signal feed</h2>
       <div class="feed" id="feed"><div class="empty">no anomalies yet</div></div>
+    </div>
+    <div class="card">
+      <h2>History &amp; analytics <span class="src">Athena / S3</span></h2>
+      <div id="analytics"><div class="empty">no history yet</div></div>
     </div>
   </div>
 </div>
@@ -156,6 +167,26 @@ function pushFeed(sev, html) {
   $("feed").innerHTML = feed.map(f =>
     `<div class="row"><time>${f.t}</time><span class="dot ${f.sev}"></span><span class="msg">${f.html}</span></div>`).join("");
 }
+
+async function refreshAnalytics() {
+  try {
+    const s = await (await fetch("/history/summary")).json();
+    const kinds = Object.entries(s.by_kind || {});
+    const max = Math.max(1, ...kinds.map(([, n]) => n));
+    const mttr = s.mean_time_to_resolve_s ? `${s.mean_time_to_resolve_s}s` : "--";
+    $("analytics").innerHTML = `
+      <div class="kpis">
+        <div class="kpi"><div class="n">${s.total_incidents}</div><div class="l">Incidents</div></div>
+        <div class="kpi"><div class="n">${s.resolved}</div><div class="l">Resolved</div></div>
+        <div class="kpi"><div class="n">${mttr}</div><div class="l">Mean time to resolve</div></div>
+      </div>
+      ${kinds.length ? kinds.map(([k, n]) =>
+        `<div class="kindbar"><span class="lbl">${k}</span><span class="bar" style="width:${(n/max)*140}px"></span><span>${n}</span></div>`
+      ).join("") : `<div class="empty">no incidents recorded yet</div>`}`;
+  } catch (e) { /* server warming up */ }
+}
+setInterval(refreshAnalytics, 5000);
+refreshAnalytics();
 
 function connect() {
   const proto = location.protocol === "https:" ? "wss" : "ws";

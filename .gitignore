@@ -12,6 +12,7 @@ dist/
 # Local runtime artifacts
 *.db
 argus.db
+data/history/
 
 # Node / CDK
 node_modules/

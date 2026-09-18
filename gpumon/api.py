@@ -19,6 +19,7 @@ from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from .archive import archive
 from .detectors import DetectorEngine
 from .models import Health, TelemetryEvent
 from .store import store
@@ -111,11 +112,29 @@ def create_app() -> FastAPI:
                 )
 
     async def heartbeat() -> None:
+        import time as _time
+
         while True:
             await asyncio.sleep(1.0)
             metrics.record_history()
             await incident_mgr.sweep()
-            await connections.broadcast(metrics.snapshot(incident_mgr))
+            snap = metrics.snapshot(incident_mgr)
+            # Firehose-equivalent: land a per-job rollup in the history archive.
+            now = _time.time()
+            for job in snap["jobs"]:
+                archive.record(
+                    {
+                        "ts": now,
+                        "job": job["job"],
+                        "health": job["health"],
+                        "tokens_per_s": job["tokens_per_s"],
+                        "avg_step_ms": job["avg_step_ms"],
+                        "max_temp_c": job["max_temp_c"],
+                        "gpus": job["gpus"],
+                        "incident_open": job["incident"] is not None,
+                    }
+                )
+            await connections.broadcast(snap)
 
     async def demo_driver() -> None:
         """Built-in cluster simulator (enabled by ARGUS_DEMO=1)."""
@@ -172,6 +191,15 @@ def create_app() -> FastAPI:
         if not found:
             return JSONResponse({"error": "not found"}, status_code=404)
         return found.model_dump()
+
+    # -- historical analytics (Firehose -> S3 -> Athena equivalent) ----------
+    @app.get("/history/timeseries")
+    async def history_timeseries(job: str, minutes: int = 30):
+        return {"job": job, "minutes": minutes, "points": archive.timeseries(job, minutes)}
+
+    @app.get("/history/summary")
+    async def history_summary():
+        return archive.incident_summary()
 
     # -- dashboard + live feed ----------------------------------------------
     @app.get("/", response_class=HTMLResponse)

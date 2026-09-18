@@ -81,7 +81,8 @@ shards / Lambda consumers; the local number is the per-core floor.
 | Store | SQLite single-table | DynamoDB single-table |
 | Alerts | WebSocket broadcast | SNS (email/SMS) |
 | Dashboard | FastAPI + WebSocket | Fargate behind ALB / S3 + CloudFront |
-| Raw events | (skipped) | S3 + Athena |
+| History/analytics | partitioned JSONL archive + query API | Firehose -> S3 (Parquet) -> Athena |
+| Embeddings | TF-IDF / local hashing | Bedrock Titan |
 | Observability | logs | CloudWatch + X-Ray |
 
 See [`docs/architecture.md`](docs/architecture.md) for the full diagram and the
@@ -148,7 +149,8 @@ Built as a vertical slice first, then deepened layer by layer:
 - [x] CDK stacks for the full AWS architecture
 - [x] Pluggable semantic retrieval: Bedrock Titan embeddings (AWS) with a
       deterministic local embedder; `ARGUS_RETRIEVER=embedding` to try it offline
-- [ ] Firehose -> S3 -> Athena historical query panel
+- [x] Firehose -> S3 -> Athena historical lake + dashboard analytics panel
+      (mirrored locally by a partitioned archive + `/history` query API)
 - [ ] React + CloudFront frontend replacing the bundled dashboard
 - [ ] Agentic auto-remediation (approval-gated rollback / cordon actions)
 
