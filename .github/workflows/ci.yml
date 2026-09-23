@@ -26,6 +26,21 @@ jobs:
       - name: Detector throughput smoke check
         run: python -m gpumon loadtest --events 50000
 
+  frontend:
+    name: frontend (react build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci || npm install
+      - name: Type-check and build
+        run: npm run build
+
   infrastructure:
     name: infrastructure (cdk synth)
     runs-on: ubuntu-latest

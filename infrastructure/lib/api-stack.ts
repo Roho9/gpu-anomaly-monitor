@@ -32,6 +32,7 @@ export interface ApiStackProps extends cdk.StackProps {
  */
 export class ApiStack extends cdk.Stack {
   public readonly httpApi: apigw.HttpApi;
+  public readonly albDnsName: string;
 
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
@@ -102,7 +103,8 @@ export class ApiStack extends cdk.Stack {
       targetUtilizationPercent: 60,
     });
 
+    this.albDnsName = service.loadBalancer.loadBalancerDnsName;
     new cdk.CfnOutput(this, "ApiUrl", { value: this.httpApi.apiEndpoint });
-    new cdk.CfnOutput(this, "DashboardUrl", { value: service.loadBalancer.loadBalancerDnsName });
+    new cdk.CfnOutput(this, "DashboardUrl", { value: this.albDnsName });
   }
 }

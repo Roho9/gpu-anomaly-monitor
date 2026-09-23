@@ -6,6 +6,7 @@ import { StreamingStack } from "../lib/streaming-stack";
 import { AiStack } from "../lib/ai-stack";
 import { ApiStack } from "../lib/api-stack";
 import { AnalyticsStack } from "../lib/analytics-stack";
+import { FrontendStack } from "../lib/frontend-stack";
 import { MonitoringStack } from "../lib/monitoring-stack";
 
 /**
@@ -44,6 +45,10 @@ new AnalyticsStack(app, "GpuMonAnalytics", {
   env,
   telemetryStream: streaming.telemetryStream,
   rawEventsBucket: streaming.rawEventsBucket,
+});
+new FrontendStack(app, "GpuMonFrontend", {
+  env,
+  albDnsName: api.albDnsName,
 });
 new MonitoringStack(app, "GpuMonMonitoring", {
   env,

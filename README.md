@@ -111,11 +111,30 @@ gpumon/               # the platform (one implementation, two runtimes)
   api.py              #   FastAPI: ingest, health, incidents, live WebSocket
   dashboard.html      #   live dashboard
   simulator.py        #   cluster telemetry + injectable failure scenarios
+  remediation.py      #   agentic, approval-gated remediation playbooks
+  archive.py          #   historical rollup archive (Firehose/S3/Athena equiv.)
 runbooks/             # RAG knowledge base (GPU failure runbooks)
-infrastructure/       # AWS CDK (TypeScript): 6 stacks, cdk deploy --all
+frontend/             # React + TypeScript dashboard (Vite); S3 + CloudFront
+infrastructure/       # AWS CDK (TypeScript): 8 stacks, cdk deploy --all
 services/processor/   # Lambda handlers + container image (reuse gpumon)
 tests/                # pytest suite
 ```
+
+## Frontend
+
+The zero-build `dashboard.html` is served by FastAPI for the one-command demo.
+The production UI is a React + TypeScript app in [`frontend/`](frontend/):
+
+```bash
+cd frontend
+npm install
+npm run dev      # http://localhost:5173 (proxies API + WebSocket to the backend)
+npm run build    # type-checked production build -> frontend/dist
+```
+
+In AWS it is served from S3 behind CloudFront, with the CDN routing
+`/health`, `/incidents`, `/history`, `/events` and the `/live` WebSocket to the
+ALB origin so the app uses same-origin relative URLs (no CORS).
 
 ## Commands
 
@@ -165,7 +184,8 @@ Built as a vertical slice first, then deepened layer by layer:
 - [x] Agentic auto-remediation: per-incident action proposals, approval-gated
       execution with an audit trail, live fault recovery in the demo
       (Step Functions human-approval workflow in AWS)
-- [ ] React + CloudFront frontend replacing the bundled dashboard
+- [x] React + TypeScript frontend (Vite) served via S3 + CloudFront, with the
+      CDN routing API/WebSocket paths to the ALB origin
 
 ## License
 
