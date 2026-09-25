@@ -1,5 +1,9 @@
 # The best GPU anomaly monitoring system ever
 
+[![CI](https://github.com/Roho9/gpu-anomaly-monitor/actions/workflows/ci.yml/badge.svg)](https://github.com/Roho9/gpu-anomaly-monitor/actions/workflows/ci.yml)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 AI-powered, real-time incident monitoring for **distributed GPU/ML training
 clusters**. It ingests per-GPU telemetry, detects the failure modes that
 actually take down large training runs (stragglers, ECC/XID hardware faults,
